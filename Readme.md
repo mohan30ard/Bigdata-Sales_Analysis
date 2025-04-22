@@ -1,264 +1,211 @@
-end‑to‑end plan for your Orders–People–Returns EDA in Neo4j 5 + GDS Community, with Python‑powered cleaning & visualization. It follows the structure of your reference tutorial and incorporates all the fixes we applied.
+# Neo4j EDA & ML on Orders–People–Returns Dataset
+
+**Team Members:**
+- Mohan Kumar Tulabandu  
+- Shravan Shankar  
+- Glen Correia  
 
 ---
 
-## 1. Data Cleaning (Jupyter Notebook)
+## 📖 Project Overview
 
-1. **Environment setup**
-   - Create a new conda/venv environment.
-   - Install:
-     ```bash
-     pip install pandas numpy openpyxl neo4j matplotlib seaborn networkx pyvis
-     ```
+This repository demonstrates an end‑to‑end Exploratory Data Analysis (EDA) and predictive modeling workflow on a retail **Orders–People–Returns** dataset, leveraging:
 
-2. **Load & inspect raw CSVs**
-   ```python
-   import pandas as pd
-   orders = pd.read_csv('orders.csv')
-   people = pd.read_csv('people.csv')
-   returns = pd.read_csv('returns.csv')
-
-   orders.info()
-   orders.isna().sum()
-   ```
-
-3. **Cleaning transformations**
-   - **Dates:**
-     ```python
-     orders['order_date'] = pd.to_datetime(orders['Order Date'], errors='coerce')
-     orders['ship_date']  = pd.to_datetime(orders['Ship Date'],  errors='coerce')
-     ```
-   - **Numerics:** cast `Sales, Quantity, Discount, Profit`:
-     ```python
-     for c in ['Sales','Quantity','Discount','Profit']:
-         orders[c.lower()] = pd.to_numeric(orders[c], errors='coerce')
-     ```
-   - **Nulls & duplicates:** drop rows missing `Order ID`/`Customer ID`/`Product ID`, then `drop_duplicates()`.
-   - **Returns flag:**
-     ```python
-     ret = returns.groupby('Order ID').size().reset_index(name='returned_count')
-     orders = orders.merge(ret, on='Order ID', how='left').fillna({'returned_count':0})
-     ```
-
-4. **Rename & export for Neo4j**
-   ```python
-   orders = orders.rename(columns={
-     'Order ID':'order_id', 'Customer ID':'customer_id', 'Customer Name':'customer_name',
-     'Customer Segment':'customer_segment', 'Ship Mode':'ship_mode',
-     'Country/Region':'country_region', 'City':'city', 'State/Province':'state_province',
-     'Postal Code':'postal_code', 'Region':'region',
-     'Product ID':'product_id', 'Product Name':'product_name',
-     'Category':'category', 'Sub-Category':'sub_category'
-   })
-   keep = [
-     'order_id','order_date','ship_date','ship_mode',
-     'customer_id','customer_name','customer_segment',
-     'country_region','city','state_province','postal_code','region',
-     'product_id','product_name','category','sub_category',
-     'sales','quantity','discount','profit','returned_count'
-   ]
-   orders_clean = orders[keep]
-   orders_clean.to_csv('orders_clean.csv', index=False)
-   people.to_csv('people_clean.csv', index=False)
-   ```
+- **Data cleaning & feature engineering** in Python (pandas, scikit‑learn, imbalanced‑learn)  
+- **Graph modeling & analytics** in Neo4j 5 with APOC & GDS Community Edition  
+- **Machine learning** (leakage‑free LightGBM pipeline)  
+- **Visualizations** of key insights and model performance  
 
 ---
 
-## 2. Neo4j Desktop Setup & Schema
+## 📂 Repository Structure
 
-1. **Neo4j Desktop** & **Import folder**
-   - Copy `orders_clean.csv`, `people.csv` to `import/`.
-2. **Plugins**
-   - Enable **APOC 5.24.2** and **GDS 2.12.0** under **Plugins** → **Manage**.
-3. **Constraints & Indexes**
-   ```cypher
-   CREATE CONSTRAINT customer_id_unique IF NOT EXISTS
-     FOR (c:Customer) REQUIRE c.id IS UNIQUE;
-   CREATE CONSTRAINT order_id_unique IF NOT EXISTS
-     FOR (o:Order)   REQUIRE o.id IS UNIQUE;
-   CREATE CONSTRAINT product_id_unique IF NOT EXISTS
-     FOR (p:Product) REQUIRE p.id IS UNIQUE;
-   CREATE CONSTRAINT region_name_unique IF NOT EXISTS
-     FOR (r:Region)  REQUIRE r.name IS UNIQUE;
-   CREATE CONSTRAINT manager_name_unique IF NOT EXISTS
-     FOR (m:Manager) REQUIRE m.name IS UNIQUE;
-   CREATE INDEX product_category_index IF NOT EXISTS
-     FOR (p:Product) ON (p.category);
-   ```
-
-_No need to edit `neo4j.conf` when importing in Neo4j Browser._
-
----
-
-## 3. Import Cleaned Data via Cypher
-
-### 3.1 Managers & Regions (`people.csv`)
-```cypher
-LOAD CSV WITH HEADERS FROM 'file:///people.csv' AS row
-WITH row
-WHERE row.`Regional Manager` IS NOT NULL AND row.`Regional Manager` <> ''
-MERGE (m:Manager {name: row.`Regional Manager`})
-MERGE (r:Region  {name: row.Region})
-MERGE (m)-[:MANAGES]->(r);
+```
+.
+├── data/
+│   ├── orders.csv
+│   ├── people.csv
+│   └── returns.csv
+│
+├── import/
+│   ├── orders_clean.csv
+│   ├── people.csv
+│   └── returns_clean.csv
+│
+├── notebooks/
+│   └── eda_cleaning.ipynb        ← Data cleaning & export to CSV
+│
+├── cypher/
+│   ├── import_people.cypher      ← Load Manager & Region
+│   ├── import_orders.cypher      ← Load Customer, Order, Region
+│   └── import_products.cypher    ← Load Product & CONTAINS
+│
+├── scripts/
+│   ├── ml_pipeline_noleak.py     ← Leakage‑free LightGBM training & evaluation
+│   └── ml_pipeline_smote_xgb.py  ← SMOTE + XGBoost alternative
+│
+├── visuals/
+│   ├── roc_curve_noleak.png
+│   ├── feature_importances_noleak.png
+│   └── ...                       ← Other output charts
+│
+├── eda_presentation.pptx         ← Final slide deck
+└── README.md
 ```
 
-### 3.2 Customers & Orders (`orders_clean.csv`)
+---
+
+## ⚙️ Prerequisites
+
+1. **Python 3.10 or 3.11** (recommended)  
+2. **Neo4j Desktop 5.x** with:
+   - APOC 5.24.2  
+   - GDS 2.12.0  
+3. **Java 8+** (for Neo4j)  
+4. **pip** or **conda** for Python package management  
+
+---
+
+## 🛠️ Setup & Installation
+
+1. **Clone the repo**  
+   ```bash
+   git clone <repo_url> && cd project-2
+   ```
+
+2. **Create & activate a venv**  
+   ```bash
+   python3.10 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+3. **Install dependencies**  
+   ```bash
+   pip install pandas numpy openpyxl scikit-learn matplotlib seaborn neo4j lightgbm imbalanced-learn
+   ```
+
+---
+
+## 1️⃣ Data Cleaning
+
+Open `notebooks/eda_cleaning.ipynb` and run all cells to:
+
+- Parse dates (`Order Date`, `Ship Date`) and numeric fields  
+- Drop null key rows, dedupe  
+- Aggregate `returns.csv` into `returned_count` per order  
+- Rename to snake_case  
+- Export **`import/orders_clean.csv`**  
+
+---
+
+## 2️⃣ Neo4j: Setup & Import
+
+1. Copy CSVs to Neo4j import folder  
+2. Configure `neo4j.conf` for APOC & GDS  
+3. Enable APOC 5.24.2 & GDS 2.12.0, restart  
+4. Run schema & import scripts:
+
 ```cypher
-LOAD CSV WITH HEADERS FROM 'file:///orders_clean.csv' AS row
-WITH row,
-     date(row.order_date)               AS od,
-     date(row.ship_date)                AS sd,
-     toFloat(row.sales)                 AS sales,
-     toInteger(row.quantity)            AS qty,
-     toFloat(row.discount)              AS disc,
-     toFloat(row.profit)                AS prof,
-     (toInteger(row.returned_count)>0)  AS returned_flag
-WHERE row.order_id IS NOT NULL
+CREATE CONSTRAINT FOR (c:Customer) ASSERT c.id IS UNIQUE;
+CREATE CONSTRAINT FOR (o:Order)    ASSERT o.id IS UNIQUE;
+CREATE CONSTRAINT FOR (p:Product)  ASSERT p.id IS UNIQUE;
+CREATE CONSTRAINT FOR (r:Region)   ASSERT r.name IS UNIQUE;
+CREATE CONSTRAINT FOR (m:Manager)  ASSERT m.name IS UNIQUE;
+CREATE INDEX FOR (p:Product) ON (p.category);
 
-MERGE (c:Customer {id: row.customer_id})
-  ON CREATE SET c.name = row.customer_name,
-                c.segment = row.customer_segment
-MERGE (o:Order {id: row.order_id})
-  ON CREATE SET
-    o.orderDate = od,
-    o.shipDate  = sd,
-    o.shipMode  = row.ship_mode,
-    o.sales     = sales,
-    o.quantity  = qty,
-    o.discount  = disc,
-    o.profit    = prof,
-    o.returned  = returned_flag
-MERGE (c)-[:PLACED]->(o)
-WITH row, o
-MATCH (r:Region {name: row.region})
-MERGE (o)-[:SHIPPED_TO]->(r);
-```
+// Managers & Regions
+:source cypher/import_people.cypher
 
-### 3.3 Products & CONTAINS
-```cypher
-LOAD CSV WITH HEADERS FROM 'file:///orders_clean.csv' AS row
-WITH row
-WHERE row.product_id IS NOT NULL
+// Customers & Orders
+:source cypher/import_orders.cypher
 
-MERGE (p:Product {id: row.product_id})
-  ON CREATE SET
-    p.name        = row.product_name,
-    p.category    = row.category,
-    p.subCategory = row.sub_category
-WITH row, p
-MATCH (o:Order {id: row.product_id})  // typo fixed below
-MERGE (o)-[:CONTAINS {quantity: toInteger(row.quantity), sales: toFloat(row.sales)}]->(p);
+// Products & CONTAINS
+:source cypher/import_products.cypher
 ```  
-*Fix:* should match on `row.order_id`, not `row.product_id`.
 
 ---
 
-## 4. Exploratory Cypher Queries
+## 3️⃣ Exploratory Queries
 
-**4.1 Top 10 Products by Sales**
 ```cypher
-MATCH (:Order)-[c:CONTAINS]->(p:Product)
+// Top Products by Sales
+MATCH (p:Product)<-[c:CONTAINS]-()
 RETURN p.name AS Product, sum(c.sales) AS TotalSales
 ORDER BY TotalSales DESC LIMIT 10;
-```
 
-**4.2 Top 10 Customers by Profit**
-```cypher
+// Top Customers by Profit
 MATCH (c:Customer)-[:PLACED]->(o:Order)
 RETURN c.name AS Customer, sum(o.profit) AS TotalProfit
 ORDER BY TotalProfit DESC LIMIT 10;
-```
 
-**4.3 Return Rates by Region**
-```cypher
+// Return Rates by Region
 MATCH (r:Region)<-[:SHIPPED_TO]-(o:Order)
-WITH r.name AS Region, count(o) AS Total, sum(toInteger(o.returned)) AS Ret
-RETURN Region, Total, Ret,
-       round(Ret*1.0/Total*100,2) AS ReturnRatePct
+RETURN r.name AS Region,
+       round(sum(CASE WHEN o.returned THEN 1 ELSE 0 END)*100.0/count(o),2) AS ReturnRatePct
 ORDER BY ReturnRatePct DESC;
-```
 
-**4.4 Avg Shipping Delay by Mode**
-```cypher
+// Avg Shipping Delay by Mode
 MATCH (o:Order)
-WITH o.shipMode AS Mode,
-     avg(duration.inDays(o.orderDate,o.shipDate).days) AS AvgDelay
-RETURN Mode, round(AvgDelay,2) AS AvgDelayDays
+RETURN o.shipMode AS Mode,
+       round(avg(duration.inDays(o.orderDate, o.shipDate).days),2) AS AvgDelayDays
 ORDER BY AvgDelayDays;
-```
+```  
 
 ---
 
-## 5. Graph Algorithms (GDS)
+## 4️⃣ Graph Algorithms (GDS)
 
-### 5.1 Product PageRank
 ```cypher
 CALL gds.graph.project(
-  'productGraph', ['Order','Product'],
-  { CONTAINS:{type:'CONTAINS',orientation:'UNDIRECTED', properties:['sales']} }
-)
-YIELD graphName,nodeCount,relationshipCount;
+  'ecomGraph',
+  ['Customer','Order','Product'],
+  { PLACED:{}, CONTAINS:{}, SHIPPED_TO:{} }
+);
 CALL gds.pageRank.write(
-  'productGraph',{writeProperty:'pr_score',relationshipWeightProperty:'sales'}
-)
-YIELD nodePropertiesWritten,ranIterations;
-```
-
-### 5.2 Product Co‑purchase Louvain
-```cypher
-CALL gds.graph.project.cypher(
-  'prodCoGraph',
-  'MATCH (p:Product) RETURN id(p) AS id',
-  '
-    MATCH (o:Order)-[:CONTAINS]->(p1:Product),
-          (o)-[:CONTAINS]->(p2:Product)
-    WHERE id(p1)<id(p2)
-    RETURN id(p1) AS source,id(p2) AS target, count(*) AS weight
-  '
-)
-YIELD graphName,nodeCount,relationshipCount;
+  'ecomGraph',
+  { nodeProjection:'Product', relationshipWeightProperty:'sales', writeProperty:'pr_score' }
+);
 CALL gds.louvain.write(
-  'prodCoGraph',{relationshipWeightProperty:'weight',writeProperty:'communityId'}
-)
-YIELD communityCount,modularity;
+  'ecomGraph',
+  { nodeLabels:['Product'], relationshipTypes:['CONTAINS'], writeProperty:'communityId' }
+);
+```  
+
+---
+
+## 5️⃣ ML Pipeline (no‑leak LightGBM)
+
+Run:
+```bash
+python scripts/ml_pipeline_noleak.py
 ```
+- Splits train/test before computing group features  
+- LightGBM with balanced class weights & hyperparameter tuning  
+- Saves `visuals/roc_curve_noleak.png` & `visuals/feature_importances_noleak.png`  
+- Writes back predictions to Neo4j and exports `order_return_predictions_noleak.csv`  
 
 ---
 
-## 6. Python Integration & Visuals
+## 🎯 Results
 
-1. **Env**
-   ```bash
-   conda create -n neo4j-eda python=3.10 pandas neo4j matplotlib seaborn networkx pyvis
-   ```
-
-2. **Connect & query**
-   ```python
-   from neo4j import GraphDatabase
-   driver = GraphDatabase.driver('bolt://localhost:7687',auth=('neo4j','pwd'))
-   ```
-
-3. **DataFrames & plots**
-   - Top 10 products by `pr_score` (bar chart)
-   - Product cluster sizes from Louvain (bar chart)
-   - Optional interactive with PyVis:
-     ```python
-     from pyvis.network import Network
-     net = Network()
-     # load nodes/edges from Neo4j and build network
-     ```
+- **Test ROC AUC:** 0.785  
+- **Actual vs Predicted Returns:** 296 vs. 545 (Accuracy 94.9%)  
+- **Key features:** historical return rates, shipping delay, unit price, etc.
 
 ---
 
-## 7. Deliverables
+## 📦 Deliverables
 
-- **EDA_Tutorial.md** (this outline + code + screenshots)
-- **eda_cleaning.ipynb** (cleaning steps)
-- **import_orders.cypher**, **gds_algos.cypher**
-- **visualize_eda.py**
-- **Charts PNGs** & **network.html**
+- Cleaned CSVs: `import/*.csv`  
+- Cypher scripts: `cypher/*.cypher`  
+- ML scripts: `scripts/*.py`  
+- Visuals: `visuals/*.png`  
+- Slide deck: `eda_presentation.pptx`  
+- **README.md**  
 
 ---
 
-Let me know if any section needs further correction or expansion!
+## 🙋‍♂️ Questions?
+
+Feel free to propose enhancements like threshold tuning, confusion‑matrix analysis, or a live PyVis dashboard!
 
