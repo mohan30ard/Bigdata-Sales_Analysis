@@ -192,6 +192,20 @@ python scripts/ml_pipeline_noleak.py
 - **Actual vs Predicted Returns:** 296 vs. 545 (Accuracy 94.9%)  
 - **Key features:** historical return rates, shipping delay, unit price, etc.
 
+## 📊 Visualizations
+
+<details>
+<summary>Click to expand key model visuals</summary>
+
+![ROC Curve](./roc_curve_noleak.png)
+*ROC Curve: Return Prediction (AUC 0.785)*
+
+
+![Feature Importances](./feature_importances_noleak.png)
+*Top 10 features driving return predictions*
+
+</details>
+
 ---
 
 ## 📦 Deliverables
